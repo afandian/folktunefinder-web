@@ -1,0 +1,94 @@
+import { iterateDocCollection } from "../fileTuneDocDb.ts";
+import { TermDocIndex } from "../index.ts";
+
+const stopWords = new Set(["the"]);
+
+// Tokenize a string, with some normalization and stemming.
+function tokenizeWords(words: string) {
+  // TODO split words better.
+  // TODO normalise diacritics
+  const splitWords = words.toLowerCase().split(/ /);
+
+  const results = new Array<string>();
+
+  for (const word of splitWords) {
+    let result = word;
+    result = result.trim().toLowerCase();
+    // TODO stemming
+    if (result.endsWith("s")) {
+      result = result.substring(0, result.length);
+    }
+
+    // Remove short stop words. Unless they are numbers, which can be kept as they can be useful in searching.
+    if (result.length < 3 && result.match(/[a-z]+/)) {
+      continue;
+    }
+
+    if (stopWords.has(word)) {
+      continue;
+    }
+
+    // O(n) but most titles are 2 long.
+    // TODO verify lengths of titles.
+    if (!results.includes(result)) {
+      results.push(result);
+    }
+  }
+
+  return results;
+}
+
+function extractTextTerms(inputs: Array<string>) {
+  const terms = new Array<bigint>();
+
+  // There be multiple due to multiple titles, which can be repetitive with different spellings.
+  // Combine these prior to tokenizing, so we can deduplicate across them all.
+  const combined = inputs.join(" ");
+
+  const tokens = tokenizeWords(combined);
+
+  for (const token of tokens) {
+    // Take the first 9 chars.
+    const length = Math.min(9, token.length);
+    let term = BigInt(0);
+
+    for (let i = 0; i < length; i++) {
+      // Take only the lower 7 bits. These are mostly ASCII, so we don't need the top bit.
+      // This lets us squeeze another character into 64 bits.
+      term |= BigInt(token.charCodeAt(i) & 0x7F) << BigInt(i * 7);
+
+      // console.log(term);
+      terms.push(term);
+    }
+  }
+
+  return terms;
+}
+
+export async function generateTextIndex(docsPath: string) {
+  const textIndex = new Map<bigint, Array<number>>();
+
+  let count = 0;
+  for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {
+    if (tuneDoc.derivedText?.titles) {
+      const textTerms = extractTextTerms(tuneDoc.derivedText?.titles);
+      for (const term of textTerms) {
+        const forTerm = textIndex.get(term);
+        if (forTerm) {
+          forTerm.push(tuneDoc.id);
+        } else {
+          textIndex.set(term, [tuneDoc.id]);
+        }
+      }
+    }
+
+    count += 1;
+    if (count % 1000 == 0) {
+      console.log("Done", count, "...");
+    }
+  }
+
+  console.log("Read total", count, "docs.");
+
+  return new TermDocIndex("titleText", textIndex);
+}
