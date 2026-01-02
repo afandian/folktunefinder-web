@@ -47,11 +47,12 @@ export async function outputPages(
   dbPath: string,
   inputIndex: TermDocIndex,
 ) {
-  // Page size. This isn't a hard limit, and can be exceeded if a single term doesn't fit.
+  // Page size. This is measured in entries.
+  // This isn't a hard limit, and can be exceeded if a single term doesn't fit.
   // Otherwise, try to pack these as full as possible.
   // This is an abirtrary choice, to be tuned based on characteristics.
   // Stop words play a role in making sure that indiscriminate words (like 'the') are removed.
-  const pageSize = 65536;
+  const pageSize = 65536 * 2;
 
   const pagesDir = path.join(dbPath, "index", inputIndex.typeName);
   Deno.mkdirSync(pagesDir, { recursive: true });
@@ -69,7 +70,7 @@ export async function outputPages(
 
   // Keep track of terms that were already written to an index.
   // This enables probing for page-packing.
-  const writtenTerms = new Set<bigint>();
+  const alreadyProbedIndexes = new Set<number>();
 
   // Mapping of index term to page number, u32 page, offset as a 32-bit word offset, length as 32-bit word.
   const manifest = new Array<[bigint, number, number, number]>();
@@ -90,21 +91,19 @@ export async function outputPages(
   let pageUsed = 0;
 
   // Number of entries we put in the page.
-  let pageEntryCout = 0;
+  let pageEntryCount = 0;
 
   // Descend the term popularity list and pack the page with the most popular available.
   for (let i = 0; i < termsPopularity.length; i++) {
     // Starting at this term i, probe for entries that can fill the page.
     for (let j = i; j < termsPopularity.length; j++) {
-      // Get this term.
-      const [term, _] = termsPopularity[i];
-
-      // Keep track of terms that have been already used to pack a page.
-      if (writtenTerms.has(term)) {
+      // Skip this one if it was already used in a prior probe.
+      if (alreadyProbedIndexes.has(j)) {
         continue;
-      } else {
-        writtenTerms.add(term);
       }
+
+      // Get this term.
+      const [term, _] = termsPopularity[j];
 
       const termEntries = inputIndex.termDocIndex.get(term);
 
@@ -113,97 +112,90 @@ export async function outputPages(
       // Bytes required to store this term's worth of data.
       const termRequired = termEntries.length * 4;
 
-      const anySpace = (pageUsed * 4 + termRequired) < pageSize;
+      // Handle if this is too big to fit on a page, even by itself.
+      // Not handling this case would result in cascading down pages,
+      // and not being able to fit in any of them!
+      if (termRequired >= pageSize) {
+        const oversizedPageBuffer = new Uint32Array(termEntries.length);
+        // For file writing.
+        const oversizedPageBufferUint8View = new Uint8Array(
+          oversizedPageBuffer.buffer,
+        );
 
-      if (anySpace) {
+        manifest.push([term, pageId, pageUsed, termEntries.length]);
+        for (let z = 0; z < termEntries.length; z++) {
+          oversizedPageBuffer[pageUsed + z] = termEntries[z];
+        }
+
+        const pagePath = path.join(pagesDir, "page-" + pageId);
+        console.error(
+          "Term ",
+          term,
+          " requires ",
+          termRequired,
+          "bytes. Save oversized index page to ",
+          pagePath,
+        );
+
+        await Deno.writeFile(pagePath, oversizedPageBufferUint8View);
+
+        pageId += 1;
+        pageBuffer.fill(0);
+        pageUsed = 0;
+        pageEntryCount = 0;
+
+        continue;
+      }
+
+      // Otherwise see if it will fit on this page.
+      const willFit = (pageUsed * 4 + termRequired) < pageSize;
+
+      if (willFit) {
         manifest.push([term, pageId, pageUsed, termEntries.length]);
         for (let z = 0; z < termEntries.length; z++) {
           pageBuffer[pageUsed + z] = termEntries[z];
         }
         pageUsed += termEntries.length;
-        pageEntryCout += 1;
-      } else {
-        // If there wasn't any space for this term in the page, and this was
-        // the first one in the page, then it won't fit on any, so don't probe.
-        // Instead write an emergency oversized page.
-        // It's OK to have a handful of these. But not worth expanding page size for the majority of the index.
-        // If this happens often, then the page size should be increased.
-        // However, if this happens
-        if (pageUsed == 0) {
-          console.error(
-            "Term ",
-            term,
-            " requires ",
-            termRequired,
-            " bytes, too much for page size ",
-            pageSize,
-            ". Increase page size!",
-          );
+        pageEntryCount += 1;
 
-          const oversizedPageBuffer = new Uint32Array(termRequired);
-          // For file writing.
-          const oversizedPageBufferUint8View = new Uint8Array(
-            oversizedPageBuffer.buffer,
-          );
-
-          manifest.push([term, pageId, pageUsed, termEntries.length]);
-          for (let z = 0; z < termEntries.length; z++) {
-            oversizedPageBuffer[pageUsed + z] = termEntries[z];
-          }
-
-          const pagePath = path.join(pagesDir, "page-" + pageId);
-          console.log("Save oversized index page to ", pagePath);
-
-          await Deno.writeFile(pagePath, oversizedPageBufferUint8View);
-
-          pageId += 1;
-          pageBuffer.fill(0);
-          pageUsed = 0;
-          pageEntryCout = 0;
-        } else {
-          const fill = (pageUsed * 4) / pageSize;
-
-          // No more space in the page.
-          const pagePath = path.join(pagesDir, "page-" + pageId);
-          console.log(
-            "Save index page to ",
-            pagePath,
-            "with",
-            pageEntryCout,
-            "entries, fill factor",
-            fill,
-          );
-
-          await Deno.writeFile(pagePath, uint8view);
-
-          pageId += 1;
-          pageBuffer.fill(0);
-          pageUsed = 0;
-          pageEntryCout = 0;
+        // If this was done as part of a probe (i.e. j > i) then store to avoid re-using.
+        // No need to store if i == j, as 'i' is monotonic.
+        if (j > i) {
+          alreadyProbedIndexes.add(j);
         }
       }
     }
+
+    // If we didn't put anything on a page it's because everything has been probed.
+    // Time to stop scanning.
+    if (pageUsed == 0) {
+      console.log("Last entry", i);
+      break;
+    } else {
+      // End of probing to fit data in this page. This page is as full as it's going to get.
+      const fill = (pageUsed * 4) / pageSize;
+      const pagePath = path.join(pagesDir, "page-" + pageId);
+      console.log(
+        "Save index page to ",
+        pagePath,
+        "with",
+        pageEntryCount,
+        "entries, fill factor",
+        fill,
+      );
+
+      await Deno.writeFile(pagePath, uint8view);
+
+      pageId += 1;
+      pageBuffer.fill(0);
+      pageUsed = 0;
+      pageEntryCount = 0;
+    }
   }
 
-  const manifestBytes = manifest.length * (8 + 4 + 4 + 4 + 4);
-  console.log(
-    "Write manifest of",
-    manifest.length,
-    "terms in ",
-    manifestBytes,
-    "bytes",
-  );
-
-  // Structure of manifest:
-  // term : u64
-  // page: u32
-  // offset: u32
-  // length: u32
-  // padding: u32
-  // Stride of 24 bytes. Aligned to 64 bits.
-  const manifestBuf = new ArrayBuffer(manifestBytes);
-  const manifestView = new DataView(manifestBuf);
-  const manifest8View = new Uint8Array(manifestBuf);
+  // Write manifest chunked into content-addressable files.
+  // Because the distribution of terms is very uneven we can't slice into equal ranges.
+  // Instead slice by file size.
 
   manifest.sort(
     (
@@ -216,22 +208,73 @@ export async function outputPages(
     },
   );
 
-  let o = 0;
-  for (const [term, page, offset, length] of manifest) {
-    manifestView.setBigUint64(o, term, true);
-    o += 8;
-    manifestView.setInt32(o, page, true);
-    o += 4;
-    manifestView.setInt32(o, offset, true);
-    o += 4;
-    manifestView.setInt32(o, length, true);
-    o += 4;
+  const manifestChunkSizeBytes = 64000;
+
+  // Structure of manifest:
+  // term : u64
+  // page: u32
+  // offset: u32
+  // length: u32
+  // padding: u32
+  // Stride of 24 bytes. Aligned to 64 bits.
+  const manifestBuf = new ArrayBuffer(manifestChunkSizeBytes);
+  const manifestView = new DataView(manifestBuf);
+
+  // Keep track of which term ranges fit on which chunk.
+  const manifestManifest = new Array<bigint>();
+
+  let chunkI = 0;
+  let offsetInChunk = 0;
+  let firstTermInChunk: bigint | null = null;
+  for (const [term, page, offsetInPage, length] of manifest) {
+    // Keep track of the first term in this chunk to put in the manifest manifest.
+    firstTermInChunk = firstTermInChunk || term;
+
+    manifestView.setBigUint64(offsetInChunk, term, true);
+    offsetInChunk += 8;
+    manifestView.setInt32(offsetInChunk, page, true);
+    offsetInChunk += 4;
+    manifestView.setInt32(offsetInChunk, offsetInPage, true);
+    offsetInChunk += 4;
+    manifestView.setInt32(offsetInChunk, length, true);
+    offsetInChunk += 4;
     // padding
-    o += 4;
+    offsetInChunk += 4;
+
+    // Flush chunk if the next one will exceed the file size.
+    if (offsetInChunk + 8 + 4 + 4 + 4 + 4 >= manifestChunkSizeBytes) {
+      // View of only those used slots.
+      const manifest8View = new Uint8Array(manifestBuf.slice(0, offsetInChunk));
+
+      const manifestPath = path.join(pagesDir, "manifest-" + chunkI);
+      await Deno.writeFile(manifestPath, manifest8View);
+      console.log(
+        "Written chunk ",
+        chunkI,
+        "starting term",
+        firstTermInChunk,
+        "with",
+        offsetInChunk,
+        "bytes to",
+        manifestPath,
+      );
+
+      manifestManifest.push(firstTermInChunk);
+      manifestManifest.push(BigInt(chunkI));
+
+      firstTermInChunk = null;
+      chunkI += 1;
+      offsetInChunk = 0;
+    }
   }
 
-  const manifestPath = path.join(pagesDir, "manifest");
-  await Deno.writeFile(manifestPath, manifest8View);
+  // Now write the manifest manifest, which maps term ranges to manifest chunk files.
+  const manifestManifest8View = new Uint8Array(
+    BigUint64Array.from(manifestManifest).buffer,
+  );
+
+  const manifestPath = path.join(pagesDir, "manifest-manifest");
+  await Deno.writeFile(manifestPath, manifestManifest8View);
 
   console.log("Done");
 }
