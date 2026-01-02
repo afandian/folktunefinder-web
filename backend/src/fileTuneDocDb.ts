@@ -43,7 +43,7 @@ export async function tidyDocCollection(docsPath: string) {
         const docIdRe = dirEntry.name.match(/(\d+).json/);
         if (docIdRe == null || docIdRe.length != 2) {
           console.error(
-            "Unexpeced file format",
+            "Unexpected file format",
             dirEntry.name,
             ", Skipping.",
           );

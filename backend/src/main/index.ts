@@ -2,6 +2,10 @@ import { getDocsPath } from "../fileTuneDocDb.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { generateTextIndex } from "./textIndex.ts";
 import { outputPages } from "../index.ts";
+import {
+  generateMelodyIncipitIndex,
+  generateMelodyIndex,
+} from "./musicIndex.ts";
 
 function getConfig() {
   const args = parseArgs(Deno.args);
@@ -17,6 +21,22 @@ async function run() {
   const config = getConfig();
 
   const docsPath = getDocsPath(config.dbPath);
+
+  console.log("Load and generate melody incipit index...");
+
+  const melodyIncipitIndex = await generateMelodyIncipitIndex(docsPath);
+
+  console.log("Output melody incipit pages...");
+
+  await outputPages(config.dbPath, melodyIncipitIndex);
+
+  console.log("Load and generate melody index...");
+
+  const melodyIndex = await generateMelodyIndex(docsPath);
+
+  console.log("Output melody index pages...");
+
+  await outputPages(config.dbPath, melodyIndex);
 
   console.log("Load and generate text index...");
 
