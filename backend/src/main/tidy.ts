@@ -1,4 +1,3 @@
-import * as path from "jsr:@std/path";
 import {
   getDocsPath,
   iterateDocCollection,

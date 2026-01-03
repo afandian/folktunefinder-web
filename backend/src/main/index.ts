@@ -1,7 +1,7 @@
 import { getDocsPath } from "../fileTuneDocDb.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { generateTextIndex } from "../textIndex.ts";
-import { outputPages } from "../index.ts";
+import { write } from "../indexWriter.ts";
 import {
   generateMelodyIncipitIndex,
   generateMelodyIndex,
@@ -28,7 +28,7 @@ async function run() {
 
   console.log("Output melody incipit pages...");
 
-  await outputPages(config.dbPath, melodyIncipitIndex);
+  await write(config.dbPath, melodyIncipitIndex);
 
   console.log("Load and generate melody index...");
 
@@ -36,7 +36,7 @@ async function run() {
 
   console.log("Output melody index pages...");
 
-  await outputPages(config.dbPath, melodyIndex);
+  await write(config.dbPath, melodyIndex);
 
   console.log("Load and generate text index...");
 
@@ -44,7 +44,7 @@ async function run() {
 
   console.log("Output text index pages...");
 
-  outputPages(config.dbPath, textIndex);
+  write(config.dbPath, textIndex);
 
   console.log("Done!");
 }

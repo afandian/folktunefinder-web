@@ -1,5 +1,5 @@
 import { iterateDocCollection } from "./fileTuneDocDb.ts";
-import { TermDocIndex } from "./index.ts";
+import { TermDocIndex } from "./indexWriter.ts";
 
 const stopWords = new Set(["the"]);
 

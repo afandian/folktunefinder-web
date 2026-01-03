@@ -43,7 +43,7 @@ function generateTermsPopularity(termDocIndex: Map<bigint, number[]>) {
 }
 
 // Write out pages and manifest for index.
-export async function outputPages(
+export async function write(
   dbPath: string,
   inputIndex: TermDocIndex,
 ) {
