@@ -1,5 +1,5 @@
-import { iterateDocCollection } from "../fileTuneDocDb.ts";
-import { TermDocIndex } from "../index.ts";
+import { iterateDocCollection } from "./fileTuneDocDb.ts";
+import { TermDocIndex } from "./index.ts";
 
 const stopWords = new Set(["the"]);
 
@@ -38,7 +38,9 @@ function tokenizeWords(words: string) {
   return results;
 }
 
-function extractTextTerms(inputs: Array<string>) {
+// Analyzer to produce set of terms from input text.
+// Used for indexing and search.
+export function extractTextTerms(inputs: Array<string>) {
   const terms = new Array<bigint>();
 
   // There be multiple due to multiple titles, which can be repetitive with different spellings.
@@ -56,10 +58,8 @@ function extractTextTerms(inputs: Array<string>) {
       // Take only the lower 7 bits. These are mostly ASCII, so we don't need the top bit.
       // This lets us squeeze another character into 64 bits.
       term |= BigInt(token.charCodeAt(i) & 0x7F) << BigInt(i * 7);
-
-      // console.log(term);
-      terms.push(term);
     }
+    terms.push(term);
   }
 
   return terms;

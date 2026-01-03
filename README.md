@@ -34,6 +34,12 @@ Read and analyze all TuneDocs and produce index files.
 deno --allow-read  --allow-write src/main/index.ts --dbPath=/home/joe/sc/ftfdb
 ```
 
+Search at command line
+
+```
+deno --allow-read  --allow-write src/main/search.ts --dbPath=/home/joe/sc/ftfdb --titleSearch="butterfly"
+```
+
 Build frontend
 ```
 (cd frontend && npm run build)

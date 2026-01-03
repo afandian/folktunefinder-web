@@ -1,5 +1,4 @@
 import * as path from "jsr:@std/path";
-import { generateDerived } from "../../../shared/src/index.ts";
 import {
   getDocsPath,
   iterateDocCollection,
@@ -30,10 +29,6 @@ async function run() {
 
   let count = 0;
   for await (const [path, tuneDoc] of iterateDocCollection(docsPath)) {
-    // const derived = generateDerived(tuneDoc.);
-    // console.log("DERIVED", derived);
-    // tuneDoc.derived = derived;
-
     await saveDoc(path, tuneDoc);
 
     count += 1;
@@ -42,10 +37,6 @@ async function run() {
     }
   }
 
-  //saveDocCollection(docs, config.dbPath);
-
-  // console.log(docs);
-  //
   console.log("Done!");
 }
 

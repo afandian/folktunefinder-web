@@ -226,7 +226,9 @@ export async function outputPages(
   let chunkI = 0;
   let offsetInChunk = 0;
   let firstTermInChunk: bigint | null = null;
-  for (const [term, page, offsetInPage, length] of manifest) {
+  for (let i = 0; i < manifest.length; i++) {
+    const [term, page, offsetInPage, length] = manifest[i];
+
     // Keep track of the first term in this chunk to put in the manifest manifest.
     firstTermInChunk = firstTermInChunk || term;
 
@@ -242,7 +244,11 @@ export async function outputPages(
     offsetInChunk += 4;
 
     // Flush chunk if the next one will exceed the file size.
-    if (offsetInChunk + 8 + 4 + 4 + 4 + 4 >= manifestChunkSizeBytes) {
+    // Or last iteration.
+    if (
+      (offsetInChunk + 8 + 4 + 4 + 4 + 4 >= manifestChunkSizeBytes) ||
+      i == manifest.length - 1
+    ) {
       // View of only those used slots.
       const manifest8View = new Uint8Array(manifestBuf.slice(0, offsetInChunk));
 
@@ -259,7 +265,9 @@ export async function outputPages(
         manifestPath,
       );
 
+      // Write first term, last term, chunk id.
       manifestManifest.push(firstTermInChunk);
+      manifestManifest.push(term);
       manifestManifest.push(BigInt(chunkI));
 
       firstTermInChunk = null;

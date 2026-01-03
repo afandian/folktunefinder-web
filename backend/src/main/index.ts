@@ -1,6 +1,6 @@
 import { getDocsPath } from "../fileTuneDocDb.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { generateTextIndex } from "./textIndex.ts";
+import { generateTextIndex } from "../textIndex.ts";
 import { outputPages } from "../index.ts";
 import {
   generateMelodyIncipitIndex,
