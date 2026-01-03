@@ -36,9 +36,20 @@ deno --allow-read  --allow-write src/main/index.ts --dbPath=/home/joe/sc/ftfdb
 
 Search at command line
 
+title
 ```
 deno --allow-read  --allow-write src/main/search.ts --dbPath=/home/joe/sc/ftfdb --titleSearch="butterfly"
 ```
+
+melody
+```
+deno --allow-read  --allow-write src/main/search.ts --dbPath=/home/joe/sc/ftfdb --melodySearch="67,60,60,67,60,60,62,63,63,62,63,65"
+```
+
+```
+deno --allow-read  --allow-write src/main/search.ts --dbPath=/home/joe/sc/ftfdb --melodySearch="67,60,63,60,62,67,60,63,60,62,60,58"
+```
+
 
 Build frontend
 ```

@@ -1,6 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { extractTextTerms } from "../textIndex.ts";
 import * as path from "jsr:@std/path";
+import { extractMelodyTerms } from "../melodyIndex.ts";
 
 function getConfig() {
   const args = parseArgs(Deno.args);
@@ -310,6 +311,20 @@ async function run() {
     const result = await search.search("titleText", terms);
 
     console.log(result);
+  }
+
+  if (config.melodySearch) {
+    const text = config.melodySearch;
+    if (typeof text == "string") {
+      const numbers = text.split(",").map((x) => {
+        return parseInt(x);
+      });
+
+      const terms = extractMelodyTerms(numbers);
+      const result = await search.search("melodyIncipitIndex", terms);
+
+      console.log(result);
+    }
   }
 }
 
