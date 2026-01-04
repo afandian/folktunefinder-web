@@ -1,3 +1,5 @@
+import * as path from "jsr:@std/path";
+
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { TextLineStream } from "jsr:@std/streams/text-line-stream";
 import { JsonParseStream } from "jsr:@std/json/parse-stream";
@@ -50,6 +52,9 @@ async function run() {
     tuneDoc.derivedMusic = new MusicInfo(melodyPitches, groupFeatures);
 
     const docPath = pathForId(docsPath, docId.toString());
+
+    Deno.mkdirSync(path.dirname(docPath), { recursive: true });
+
     saveDoc(docPath, tuneDoc);
 
     count += 1;

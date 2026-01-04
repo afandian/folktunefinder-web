@@ -7,7 +7,6 @@ export function getDocsPath(dbPath: string) {
 }
 
 /// Produce predictable path for the doc ID.
-/// Create directory structure if needed.
 export function pathForId(docsPath: string, docId: string) {
   // Chunks in path.
   const chunkSize = 2;
@@ -19,13 +18,9 @@ export function pathForId(docsPath: string, docId: string) {
     expectedPathParts.push(docId.substring(i, i + chunkSize));
   }
 
-  const expectedPathDirs = path.join(docsPath, ...expectedPathParts);
-
   expectedPathParts.push(docId + ".json");
 
   const expectedPath = path.join(docsPath, ...expectedPathParts);
-
-  Deno.mkdirSync(expectedPathDirs, { recursive: true });
 
   return expectedPath;
 }
