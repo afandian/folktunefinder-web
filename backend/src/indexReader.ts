@@ -11,8 +11,8 @@ export interface Resolver {
     pageId: number,
   ): Promise<Uint32Array<ArrayBuffer>>;
 
-  getTotalRequests: number;
-  getTotalRequestBytes: number;
+  getTotalRequests(): number;
+  getTotalRequestBytes(): number;
 }
 
 // Caching index loader.
