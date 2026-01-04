@@ -1,5 +1,5 @@
 import { Resolver } from "../../backend/src/indexReader.ts";
-import { SearchService } from "../../backend/src/search.ts";
+import { IndexSearchQuery, SearchService } from "../../backend/src/search.ts";
 import { extractTextTerms } from "../../backend/src/textIndex.ts";
 import { TuneDoc } from "../../shared/src/index.ts";
 import { pathForId } from "../../backend/src/fileTuneDocDb.ts";
@@ -84,13 +84,15 @@ export async function searchMain(
   search.initType("melodyIndex");
   search.initType("melodyIncipitIndex");
 
-  // TODO multiple search types.
+  const queries = new Array<IndexSearchQuery>();
   let results = null;
   if (text) {
     console.log("Search text", text);
     const terms = extractTextTerms([text]);
-    results = await search.search("titleText", terms);
+    queries.push(new IndexSearchQuery("titleText", terms));
   }
+
+  results = await search.search(queries);
 
   if (results) {
     let nextPage = null;

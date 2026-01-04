@@ -3,7 +3,7 @@ import { extractTextTerms } from "../textIndex.ts";
 import * as path from "jsr:@std/path";
 import { extractMelodyTerms } from "../melodyIndex.ts";
 import { Resolver } from "../indexReader.ts";
-import { SearchService } from "../search.ts";
+import { IndexSearchQuery, SearchService } from "../search.ts";
 
 function getConfig() {
   const args = parseArgs(Deno.args);
@@ -88,14 +88,13 @@ async function run() {
   search.initType("melodyIndex");
   search.initType("melodyIncipitIndex");
 
+  const searchQueries = Array<IndexSearchQuery>();
+
   if (config.titleSearch) {
     const text = config.titleSearch;
 
     const terms = extractTextTerms([text]);
-
-    const result = await search.search("titleText", terms);
-
-    console.log(result);
+    searchQueries.push(new IndexSearchQuery("titleText", terms));
   }
 
   if (config.melodySearch) {
@@ -106,11 +105,13 @@ async function run() {
       });
 
       const terms = extractMelodyTerms(numbers);
-      const result = await search.search("melodyIncipitIndex", terms);
-
-      console.log(result);
+      searchQueries.push(new IndexSearchQuery("melodyIncipitIndex", terms));
     }
   }
+
+  const result = await search.search(searchQueries);
+  console.log(searchQueries);
+  console.log(result);
 }
 
 run();

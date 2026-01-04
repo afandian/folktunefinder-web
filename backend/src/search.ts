@@ -8,6 +8,11 @@ export class SearchResult {
   ) {}
 }
 
+// Composable query for terms on a specific index type.
+export class IndexSearchQuery {
+  constructor(public indexName: string, public terms: bigint[]) {}
+}
+
 // Service for searching indexes.
 // Has a resolver which it uses to retrieve data.
 export class SearchService {
@@ -45,28 +50,33 @@ export class SearchService {
     );
   }
 
-  async search(indexTypeName: string, terms: bigint[]) {
+  async search(searchRequests: Array<IndexSearchQuery>) {
     const preRequests = this.totalRequests();
     const preRequestBytes = this.totalRequestBytes();
-
-    // Ensure the cache is loaded for this type.
-    this.initType(indexTypeName);
-
-    const cache = this.caches.get(indexTypeName);
-    if (!cache) {
-      console.error("Didn't find cache for ", indexTypeName);
-      return null;
-    }
 
     // doc id to score
     const docIdScores = new Map<number, number>();
 
-    for (const term of terms) {
-      const entries = await cache.getEntryForTerm(term);
-      if (entries) {
-        for (const entry of entries) {
-          const score = docIdScores.get(entry) || 0;
-          docIdScores.set(entry, score + 1);
+    // Pre-fetch all types requested.
+    for (const searchRequest of searchRequests) {
+      // Ensure the cache is loaded for this type.
+      this.initType(searchRequest.indexName);
+    }
+
+    for (const searchRequest of searchRequests) {
+      const cache = this.caches.get(searchRequest.indexName);
+      if (!cache) {
+        console.error("Didn't find cache for ", searchRequest.indexName);
+        return null;
+      }
+
+      for (const term of searchRequest.terms) {
+        const entries = await cache.getEntryForTerm(term);
+        if (entries) {
+          for (const entry of entries) {
+            const score = docIdScores.get(entry) || 0;
+            docIdScores.set(entry, score + 1);
+          }
         }
       }
     }
