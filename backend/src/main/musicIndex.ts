@@ -1,5 +1,5 @@
 import { iterateDocCollection } from "../fileTuneDocDb.ts";
-import { TermDocIndex } from "../index.ts";
+import { TermDocIndex } from "../indexWriter.ts";
 import { extractMelodyTerms } from "../melodyIndex.ts";
 
 export async function generateMelodyIndex(docsPath: string) {

@@ -1,7 +1,9 @@
 import { iterateDocCollection } from "./fileTuneDocDb.ts";
 import { TermDocIndex } from "./indexWriter.ts";
 
-const stopWords = new Set(["the"]);
+const stopWords = new Set(["the", "is", "it"]);
+
+const stems = ["s", "ed", "ing", "ly", "es"];
 
 // Tokenize a string, with some normalization and stemming.
 function tokenizeWords(words: string) {
@@ -12,16 +14,21 @@ function tokenizeWords(words: string) {
   const results = new Array<string>();
 
   for (const word of splitWords) {
+    if (!word) continue;
+
     let result = word;
     result = result.trim().toLowerCase();
-    // TODO stemming
-    if (result.endsWith("s")) {
-      result = result.substring(0, result.length);
-    }
 
     // Remove short stop words. Unless they are numbers, which can be kept as they can be useful in searching.
+    // Do this before stemming in case stemming removes words that would have been matched (e.g. "ted" -> "t")
     if (result.length < 3 && result.match(/[a-z]+/)) {
       continue;
+    }
+
+    for (const stem of stems) {
+      if (result.endsWith(stem)) {
+        result = result.substring(0, result.length - stem.length);
+      }
     }
 
     if (stopWords.has(word)) {

@@ -1,6 +1,7 @@
 import { Resolver } from "../../backend/src/indexReader.ts";
 import { IndexSearchQuery, SearchService } from "../../backend/src/search.ts";
 import { extractTextTerms } from "../../backend/src/textIndex.ts";
+import { extractMelodyTerms } from "../../backend/src/melodyIndex.ts";
 import { TuneDoc } from "../../shared/src/index.ts";
 import { pathForId } from "../../backend/src/fileTuneDocDb.ts";
 
@@ -86,10 +87,19 @@ export async function searchMain(
 
   const queries = new Array<IndexSearchQuery>();
   let results = null;
+
   if (text) {
     console.log("Search text", text);
     const terms = extractTextTerms([text]);
     queries.push(new IndexSearchQuery("titleText", terms));
+  }
+
+  if (melody) {
+    const pitches = melody.split(",").map((x) => parseInt(x) || 0);
+    console.log("Search melody", pitches);
+
+    const terms = extractMelodyTerms(pitches);
+    queries.push(new IndexSearchQuery("melodyIncipitIndex", terms));
   }
 
   results = await search.search(queries);
@@ -206,6 +216,12 @@ if (submitButton) {
     event.preventDefault();
     const text = (<HTMLInputElement> document.getElementById("text"))
       ?.value;
-    navigate(new Map([["text", text], ["page", "1"]]), false);
+    const melody = (<HTMLInputElement> document.getElementById("melody"))
+      ?.value;
+
+    navigate(
+      new Map([["text", text], ["melody", melody], ["page", "1"]]),
+      false,
+    );
   };
 }
