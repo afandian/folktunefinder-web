@@ -1,5 +1,5 @@
 import { iterateDocCollection } from "./fileTuneDocDb.ts";
-import { TermDocIndex } from "./indexWriter.ts";
+import { DocTermOccurences, TermDocIndex } from "./indexWriter.ts";
 
 const stopWords = new Set(["the", "is", "it"]);
 
@@ -48,7 +48,7 @@ function tokenizeWords(words: string) {
 // Analyzer to produce set of terms from input text.
 // Used for indexing and search.
 export function extractTextTerms(inputs: Array<string>) {
-  const terms = new Array<bigint>();
+  const terms = new Array<[bigint, number]>();
 
   // There be multiple due to multiple titles, which can be repetitive with different spellings.
   // Combine these prior to tokenizing, so we can deduplicate across them all.
@@ -56,6 +56,7 @@ export function extractTextTerms(inputs: Array<string>) {
 
   const tokens = tokenizeWords(combined);
 
+  let i = 0;
   for (const token of tokens) {
     // Take the first 9 chars.
     const length = Math.min(9, token.length);
@@ -66,27 +67,21 @@ export function extractTextTerms(inputs: Array<string>) {
       // This lets us squeeze another character into 64 bits.
       term |= BigInt(token.charCodeAt(i) & 0x7F) << BigInt(i * 7);
     }
-    terms.push(term);
+    terms.push([term, i]);
+    i += 1;
   }
 
   return terms;
 }
 
 export async function generateTextIndex(docsPath: string) {
-  const textIndex = new Map<bigint, Array<number>>();
+  const docOccurrences = new Map<number, Array<[bigint, number]>>();
 
   let count = 0;
   for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {
     if (tuneDoc.derivedText?.titles) {
       const textTerms = extractTextTerms(tuneDoc.derivedText?.titles);
-      for (const term of textTerms) {
-        const forTerm = textIndex.get(term);
-        if (forTerm) {
-          forTerm.push(tuneDoc.id);
-        } else {
-          textIndex.set(term, [tuneDoc.id]);
-        }
-      }
+      docOccurrences.set(tuneDoc.id, textTerms);
     }
 
     count += 1;
@@ -97,5 +92,5 @@ export async function generateTextIndex(docsPath: string) {
 
   console.log("Read total", count, "docs.");
 
-  return new TermDocIndex("titleText", textIndex);
+  return new DocTermOccurences("titleText", docOccurrences);
 }

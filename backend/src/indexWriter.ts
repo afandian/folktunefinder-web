@@ -1,6 +1,13 @@
 import * as path from "jsr:@std/path";
 
-function getLongestEntryLength(input: Map<bigint, Array<number>>) {
+// List of doc and position in doc.
+type DocOccurrenceList = Array<[number, number]>;
+
+type TermDocOccurrences = Map<bigint, Array<[number, number]>>;
+
+function getLongestEntryLength(
+  input: TermDocOccurrences,
+) {
   let longest = 0;
   for (const [_k, vs] of input) {
     if (vs.length > longest) {
@@ -11,7 +18,7 @@ function getLongestEntryLength(input: Map<bigint, Array<number>>) {
   return longest;
 }
 
-function getTotalEntriesLength(input: Map<bigint, Array<number>>) {
+function getTotalEntriesLength(input: TermDocOccurrences) {
   let total = 1000;
   for (const [_, vs] of input) {
     total += vs.length;
@@ -20,15 +27,16 @@ function getTotalEntriesLength(input: Map<bigint, Array<number>>) {
   return total;
 }
 
-export class TermDocIndex {
+export class DocTermOccurences {
   constructor(
-    public typeName: string,
-    public termDocIndex: Map<bigint, Array<number>>,
+    public indexTypeName: string,
+    // Doc ID => [term, position in doc]
+    public docTermOccurrence: Map<number, Array<[bigint, number]>>,
   ) {}
 }
 
 /// For an input term doc index, return a sorted list of terms, most popular first.
-function generateTermsPopularity(termDocIndex: Map<bigint, number[]>) {
+function generateTermsPopularity(termDocIndex: TermDocOccurrences) {
   // Terms in descending order of popularity.
   // This puts more popular terms on lower pages.
   const termsPopularity = new Array<[bigint, number]>();
@@ -42,10 +50,52 @@ function generateTermsPopularity(termDocIndex: Map<bigint, number[]>) {
   return termsPopularity;
 }
 
+function generateTermDocIndex(
+  docTermOccurrences: DocTermOccurences,
+): TermDocOccurrences {
+  // map of term to doc and position
+  const result = new Map<bigint, Array<[number, number]>>();
+  for (const [docId, termPositions] of docTermOccurrences.docTermOccurrence) {
+    for (const [term, position] of termPositions) {
+      let entry = result.get(term);
+      if (!entry) {
+        entry = [];
+        result.set(term, entry);
+      }
+      entry.push([docId, position]);
+
+      if (term == 240677602n) {
+        console.log("TERM", term, "POS", position, "ENTRY", entry);
+      }
+    }
+  }
+
+  console.log("Finished generate term doc occurrences");
+
+  return result;
+}
+
+// Combine the docId (as 24 bit unsigned number) and position (as 12 bit unsigned number) into one 32 bit word.
+// docId is stored in the low bits, position is stored in the high bits.
+function tagEntries(input: Array<[number, number]>): Array<number> {
+  // TODO check bounds
+  const result = new Array<number>();
+  for (const [docId, position] of input) {
+    const docIdPart = docId & 0x00FFFFFF;
+    const positionPart = (position & 0xFFF) << 24;
+    const tagged = docIdPart | positionPart;
+
+    if (tagged) {
+      result.push(tagged);
+    }
+  }
+  return result;
+}
+
 // Write out pages and manifest for index.
 export async function write(
   dbPath: string,
-  inputIndex: TermDocIndex,
+  inputDocOccurrences: DocTermOccurences,
 ) {
   // Page size. This is measured in entries.
   // This isn't a hard limit, and can be exceeded if a single term doesn't fit.
@@ -54,19 +104,34 @@ export async function write(
   // Stop words play a role in making sure that indiscriminate words (like 'the') are removed.
   const pageSize = 65536 * 2;
 
-  const pagesDir = path.join(dbPath, "index", inputIndex.typeName);
+  const pagesDir = path.join(
+    dbPath,
+    "index",
+    inputDocOccurrences.indexTypeName,
+  );
   Deno.mkdirSync(pagesDir, { recursive: true });
 
-  console.log("Write index of type", inputIndex.typeName, "to", pagesDir);
-  const longestEntryLength = getLongestEntryLength(inputIndex.termDocIndex);
-  const totalEntryLength = getTotalEntriesLength(inputIndex.termDocIndex);
+  console.log(
+    "Write index of type",
+    inputDocOccurrences.indexTypeName,
+    "to",
+    pagesDir,
+  );
+  console.log("Generate term doc index...");
+  const termDocIndex = generateTermDocIndex(inputDocOccurrences);
+  console.log("Generate stats...");
+
+  const longestEntryLength = getLongestEntryLength(termDocIndex);
+  const totalEntryLength = getTotalEntriesLength(termDocIndex);
 
   console.log("Longest entry: ", longestEntryLength);
-  console.log("Number of terms: ", inputIndex.termDocIndex.size);
+  console.log("Number of terms: ", termDocIndex.size);
   console.log("Total entry length: ", totalEntryLength);
 
+  console.log("Generate popularity...");
+
   // Get list of terms in order of popularity.
-  const termsPopularity = generateTermsPopularity(inputIndex.termDocIndex);
+  const termsPopularity = generateTermsPopularity(termDocIndex);
 
   // Keep track of terms that were already written to an index.
   // This enables probing for page-packing.
@@ -92,6 +157,7 @@ export async function write(
 
   // Number of entries we put in the page.
   let pageEntryCount = 0;
+  console.log("Start page writing...");
 
   // Descend the term popularity list and pack the page with the most popular available.
   for (let i = 0; i < termsPopularity.length; i++) {
@@ -105,9 +171,15 @@ export async function write(
       // Get this term.
       const [term, _] = termsPopularity[j];
 
-      const termEntries = inputIndex.termDocIndex.get(term);
+      const termEntries = termDocIndex.get(term);
 
+      if (term == 240677602n) {
+        console.log("TERM", term, "ENTRIES, entries");
+      }
       if (!termEntries) continue;
+
+      // Compress the doc occurrence into tagged entries.
+      const taggedEntries = tagEntries(termEntries);
 
       // Bytes required to store this term's worth of data.
       const termRequired = termEntries.length * 4;
@@ -122,9 +194,10 @@ export async function write(
           oversizedPageBuffer.buffer,
         );
 
-        manifest.push([term, pageId, pageUsed, termEntries.length]);
-        for (let z = 0; z < termEntries.length; z++) {
-          oversizedPageBuffer[pageUsed + z] = termEntries[z];
+        manifest.push([term, pageId, pageUsed, taggedEntries.length]);
+
+        for (let z = 0; z < taggedEntries.length; z++) {
+          oversizedPageBuffer[pageUsed + z] = taggedEntries[z];
         }
 
         const pagePath = path.join(pagesDir, "page-" + pageId);
@@ -151,11 +224,11 @@ export async function write(
       const willFit = (pageUsed * 4 + termRequired) < pageSize;
 
       if (willFit) {
-        manifest.push([term, pageId, pageUsed, termEntries.length]);
-        for (let z = 0; z < termEntries.length; z++) {
-          pageBuffer[pageUsed + z] = termEntries[z];
+        manifest.push([term, pageId, pageUsed, taggedEntries.length]);
+        for (let z = 0; z < taggedEntries.length; z++) {
+          pageBuffer[pageUsed + z] = taggedEntries[z];
         }
-        pageUsed += termEntries.length;
+        pageUsed += taggedEntries.length;
         pageEntryCount += 1;
 
         // If this was done as part of a probe (i.e. j > i) then store to avoid re-using.

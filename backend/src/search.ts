@@ -10,7 +10,17 @@ export class SearchResult {
 
 // Composable query for terms on a specific index type.
 export class IndexSearchQuery {
-  constructor(public indexName: string, public terms: bigint[]) {}
+  constructor(
+    public indexName: string,
+    public terms: Array<[bigint, number]>,
+  ) {}
+}
+
+function unpackTagged(input: number) {
+  const docId = input && 0x00FFFFFF;
+  const position = input >> 24;
+
+  return [docId, position];
 }
 
 // Service for searching indexes.
@@ -70,12 +80,14 @@ export class SearchService {
         return null;
       }
 
-      for (const term of searchRequest.terms) {
-        const entries = await cache.getEntryForTerm(term);
+      for (const [term, _position] of searchRequest.terms) {
+        const entries = await cache.getTaggedEntriesForTerm(term);
         if (entries) {
           for (const entry of entries) {
+            const [docId, position] = unpackTagged(entry);
+
             const score = docIdScores.get(entry) || 0;
-            docIdScores.set(entry, score + 1);
+            docIdScores.set(docId, score + 1);
           }
         }
       }

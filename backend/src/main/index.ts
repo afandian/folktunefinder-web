@@ -6,7 +6,7 @@ import {
   generateMelodyIncipitIndex,
   generateMelodyIndex,
 } from "./musicIndex.ts";
-
+import v8 from "node:v8";
 function getConfig() {
   const args = parseArgs(Deno.args);
   if (!args.dbPath) {
@@ -19,6 +19,8 @@ function getConfig() {
 
 async function run() {
   const config = getConfig();
+
+  console.log("Memory stats", v8.getHeapStatistics());
 
   const docsPath = getDocsPath(config.dbPath);
 

@@ -31,7 +31,7 @@ Build indexes
 Read and analyze all TuneDocs and produce index files.
 
 ```
-deno --allow-read  --allow-write src/main/index.ts --dbPath=/home/joe/sc/ftfdb
+deno  --v8-flags=--max-old-space-size=8000 --allow-read  --allow-write src/main/index.ts --dbPath=/home/joe/sc/ftfdb
 ```
 
 Search at command line

@@ -120,7 +120,9 @@ export class IndexCache {
     return true;
   }
 
-  async getEntryForTerm(term: bigint) {
+  // Return entries in tagged format.
+  // This is so we can store the tagged format in the cache, and unpack on use.
+  async getTaggedEntriesForTerm(term: bigint) {
     const manifestChunkId = await this.getManifestChunkIdForTerm(term);
     if (!manifestChunkId) {
       // Not an error, just means searching for unknown term.

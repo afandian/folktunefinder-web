@@ -1,5 +1,5 @@
 export function extractMelodyTerms(melody: Array<number>) {
-  const terms = new Array<bigint>();
+  const terms = new Array<[bigint, number]>();
   const termLength = 5;
 
   for (let i = 0; i < melody.length - termLength; i++) {
@@ -12,7 +12,7 @@ export function extractMelodyTerms(melody: Array<number>) {
       }
     }
 
-    terms.push(term);
+    terms.push([term, i]);
   }
 
   return terms;
