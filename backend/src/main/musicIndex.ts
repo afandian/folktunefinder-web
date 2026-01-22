@@ -1,6 +1,6 @@
 import { iterateDocCollection } from "../fileTuneDocDb.ts";
-import { DocTermOccurences } from "../indexWriter.ts";
-import { extractMelodyTerms } from "../melodyIndex.ts";
+import { DocTermOccurences, DocTermOccurrences } from "../types.ts";
+import { extractMelodyTerms } from "../melodyAnalysis.ts";
 
 export async function generateMelodyIndex(docsPath: string) {
   const docOccurrences = new Map<number, Array<[bigint, number]>>();
@@ -24,8 +24,13 @@ export async function generateMelodyIndex(docsPath: string) {
   return new DocTermOccurences("melodyIndex", docOccurrences);
 }
 
-export async function generateMelodyIncipitIndex(docsPath: string) {
-  const docOccurrences = new Map<number, Array<[bigint, number]>>();
+export async function generateMelodyIncipitDocTermOccurrences(
+  docsPath: string,
+) {
+  const docOccurrences: DocTermOccurrences = new Map<
+    number,
+    Array<[bigint, number]>
+  >();
 
   let count = 0;
   for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {

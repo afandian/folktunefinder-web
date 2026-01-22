@@ -1,71 +1,9 @@
-import { Resolver } from "../../backend/src/indexReader.ts";
+import { PagedIndexReaderHttpDriver } from "../../backend/src/httpStorageDriver.ts";
 import { IndexSearchQuery, SearchService } from "../../backend/src/search.ts";
-import { extractTextTerms } from "../../backend/src/textIndex.ts";
-import { extractMelodyTerms } from "../../backend/src/melodyIndex.ts";
+import { extractTextTerms } from "../../backend/src/textAnalysis.ts";
+import { extractMelodyTerms } from "../../backend/src/melodyAnalysis.ts";
 import { TuneDoc } from "../../shared/src/index.ts";
 import { pathForId } from "../../backend/src/fileTuneDocDb.ts";
-
-class HttpResolver implements Resolver {
-  constructor(public dbPath: string) {}
-
-  // Number of network requests.
-  private requests = 0;
-
-  // Number of request bytes.
-  private requestBytes = 0;
-
-  async loadManifestManifestForType(indexType: string) {
-    const filePath = this.dbPath +
-      "/index/" +
-      indexType +
-      "/manifest-manifest";
-
-    const responseBuffer = await (await fetch(filePath)).arrayBuffer();
-
-    this.requests += 1;
-    this.requestBytes += responseBuffer.byteLength;
-
-    // Take a copy of the buffer.
-    return new BigUint64Array(responseBuffer);
-  }
-
-  async getManifestChunk(indexType: string, chunkId: number) {
-    const filePath = this.dbPath +
-      "/index/" +
-      indexType +
-      "/manifest-" + chunkId;
-
-    const responseBuffer = await (await fetch(filePath)).arrayBuffer();
-
-    this.requests += 1;
-    this.requestBytes += responseBuffer.byteLength;
-
-    // Take a copy of the buffer.
-    return new BigUint64Array(responseBuffer);
-  }
-
-  async getPageId(indexType: string, pageId: number) {
-    const filePath = this.dbPath +
-      "/index/" +
-      indexType +
-      "/page-" + pageId;
-
-    const responseBuffer = await (await fetch(filePath)).arrayBuffer();
-
-    this.requests += 1;
-    this.requestBytes += responseBuffer.byteLength;
-
-    return new Uint32Array(responseBuffer);
-  }
-
-  getTotalRequests(): number {
-    return this.requests;
-  }
-
-  getTotalRequestBytes(): number {
-    return this.requestBytes;
-  }
-}
 
 export async function searchMain(
   text: string | null,
@@ -78,12 +16,15 @@ export async function searchMain(
   }
 
   const pageSize = 20;
-  const urlBase = "http://localhost:8000";
-  const resolver = new HttpResolver(urlBase);
-  const search = new SearchService(resolver);
-  search.initType("titleText");
-  search.initType("melodyIndex");
-  search.initType("melodyIncipitIndex");
+  const urlBase = "http://127.0.0.1:8000";
+
+  const driver = new PagedIndexReaderHttpDriver(urlBase);
+
+  const search = new SearchService(
+    driver,
+    ["melody", "title", "melodyIncipit"],
+    32768,
+  );
 
   const queries = new Array<IndexSearchQuery>();
   let results = null;
@@ -91,7 +32,7 @@ export async function searchMain(
   if (text) {
     console.log("Search text", text);
     const terms = extractTextTerms([text]);
-    queries.push(new IndexSearchQuery("titleText", terms));
+    queries.push(new IndexSearchQuery("title", terms));
   }
 
   if (melody) {
@@ -99,7 +40,7 @@ export async function searchMain(
     console.log("Search melody", pitches);
 
     const terms = extractMelodyTerms(pitches);
-    queries.push(new IndexSearchQuery("melodyIncipitIndex", terms));
+    queries.push(new IndexSearchQuery("melodyIncipit", terms));
   }
 
   results = await search.search(queries);

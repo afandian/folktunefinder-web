@@ -1,12 +1,14 @@
 import { iterateDocCollection } from "./fileTuneDocDb.ts";
-import { DocTermOccurences, TermDocIndex } from "./indexWriter.ts";
+import { DocTermOccurences } from "./types.ts";
+
+// Analyze text to produce search terms.
 
 const stopWords = new Set(["the", "is", "it"]);
 
 const stems = ["s", "ed", "ing", "ly", "es"];
 
 // Tokenize a string, with some normalization and stemming.
-function tokenizeWords(words: string) {
+export function tokenizeWords(words: string) {
   // TODO split words better.
   // TODO normalise diacritics
   const splitWords = words.toLowerCase().split(/ /);
@@ -86,7 +88,7 @@ export async function generateTextIndex(docsPath: string) {
 
     count += 1;
     if (count % 1000 == 0) {
-      console.log("Done", count, "...");
+      console.log("Generated text index from", count, "docs ...");
     }
   }
 

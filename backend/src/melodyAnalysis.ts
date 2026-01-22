@@ -1,3 +1,5 @@
+// Analyze melody to produce search terms.
+
 export function extractMelodyTerms(melody: Array<number>) {
   const terms = new Array<[bigint, number]>();
   const termLength = 5;

@@ -1,8 +1,7 @@
+import { PagedIndexReaderFileDriver } from "../diskStorageDriver.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { extractTextTerms } from "../textIndex.ts";
-import * as path from "jsr:@std/path";
-import { extractMelodyTerms } from "../melodyIndex.ts";
-import { Resolver } from "../indexReader.ts";
+import { extractTextTerms } from "../textAnalysis.ts";
+import { extractMelodyTerms } from "../melodyAnalysis.ts";
 import { IndexSearchQuery, SearchService } from "../search.ts";
 
 function getConfig() {
@@ -15,78 +14,17 @@ function getConfig() {
   return args;
 }
 
-class LocalFileResolver implements Resolver {
-  constructor(public dbPath: string) {}
-
-  // Number of network requests.
-  private requests = 0;
-
-  // Number of request bytes.
-  private requestBytes = 0;
-
-  async loadManifestManifestForType(indexType: string) {
-    const filePath = path.join(
-      this.dbPath,
-      "index",
-      indexType,
-      "manifest-manifest",
-    );
-
-    const fileBuf = await Deno.readFile(filePath);
-    this.requests += 1;
-    this.requestBytes += fileBuf.byteLength;
-
-    // Take a copy of the buffer.
-    return new BigUint64Array(new BigUint64Array(fileBuf.buffer));
-  }
-
-  async getManifestChunk(indexType: string, chunkId: number) {
-    const filePath = path.join(
-      this.dbPath,
-      "index",
-      indexType,
-      "manifest-" + chunkId,
-    );
-    const fileBuf = await Deno.readFile(filePath);
-    this.requests += 1;
-    this.requestBytes += fileBuf.byteLength;
-
-    // Take a copy of the buffer.
-    return new BigUint64Array(new BigUint64Array(fileBuf.buffer));
-  }
-
-  async getPageId(indexType: string, pageId: number) {
-    const filePath = path.join(
-      this.dbPath,
-      "index",
-      indexType,
-      "page-" + pageId,
-    );
-    const fileBuf = await Deno.readFile(filePath);
-    this.requests += 1;
-    this.requestBytes += fileBuf.byteLength;
-
-    // Take a copy of the buffer.
-    return new Uint32Array(new Uint32Array(fileBuf.buffer));
-  }
-
-  getTotalRequests(): number {
-    return this.requests;
-  }
-
-  getTotalRequestBytes(): number {
-    return this.requestBytes;
-  }
-}
-
 async function run() {
   const config = getConfig();
 
-  const resolver = new LocalFileResolver(config.dbPath);
-  const search = new SearchService(resolver);
-  search.initType("titleText");
-  search.initType("melodyIndex");
-  search.initType("melodyIncipitIndex");
+  const searchDriver = new PagedIndexReaderFileDriver(config.dbPath);
+
+  const search = new SearchService(
+    searchDriver,
+    //["melody", "title", "melodyIncipit"],
+    ["title"],
+    32768,
+  );
 
   const searchQueries = Array<IndexSearchQuery>();
 
@@ -94,7 +32,7 @@ async function run() {
     const text = config.titleSearch;
 
     const terms = extractTextTerms([text]);
-    searchQueries.push(new IndexSearchQuery("titleText", terms));
+    searchQueries.push(new IndexSearchQuery("title", terms));
   }
 
   if (config.melodySearch) {
@@ -105,7 +43,7 @@ async function run() {
       });
 
       const terms = extractMelodyTerms(numbers);
-      searchQueries.push(new IndexSearchQuery("melodyIncipitIndex", terms));
+      searchQueries.push(new IndexSearchQuery("melodyIncipit", terms));
     }
   }
 
