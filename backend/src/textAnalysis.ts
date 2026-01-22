@@ -1,10 +1,14 @@
 import { iterateDocCollection } from "./fileTuneDocDb.ts";
-import { TermDocIndex } from "./indexWriter.ts";
+import { DocTermOccurences } from "./types.ts";
 
-const stopWords = new Set(["the"]);
+// Analyze text to produce search terms.
+
+const stopWords = new Set(["the", "is", "it"]);
+
+const stems = ["s", "ed", "ing", "ly", "es"];
 
 // Tokenize a string, with some normalization and stemming.
-function tokenizeWords(words: string) {
+export function tokenizeWords(words: string) {
   // TODO split words better.
   // TODO normalise diacritics
   const splitWords = words.toLowerCase().split(/ /);
@@ -12,16 +16,21 @@ function tokenizeWords(words: string) {
   const results = new Array<string>();
 
   for (const word of splitWords) {
+    if (!word) continue;
+
     let result = word;
     result = result.trim().toLowerCase();
-    // TODO stemming
-    if (result.endsWith("s")) {
-      result = result.substring(0, result.length);
-    }
 
     // Remove short stop words. Unless they are numbers, which can be kept as they can be useful in searching.
+    // Do this before stemming in case stemming removes words that would have been matched (e.g. "ted" -> "t")
     if (result.length < 3 && result.match(/[a-z]+/)) {
       continue;
+    }
+
+    for (const stem of stems) {
+      if (result.endsWith(stem)) {
+        result = result.substring(0, result.length - stem.length);
+      }
     }
 
     if (stopWords.has(word)) {
@@ -41,7 +50,7 @@ function tokenizeWords(words: string) {
 // Analyzer to produce set of terms from input text.
 // Used for indexing and search.
 export function extractTextTerms(inputs: Array<string>) {
-  const terms = new Array<bigint>();
+  const terms = new Array<[bigint, number]>();
 
   // There be multiple due to multiple titles, which can be repetitive with different spellings.
   // Combine these prior to tokenizing, so we can deduplicate across them all.
@@ -49,6 +58,7 @@ export function extractTextTerms(inputs: Array<string>) {
 
   const tokens = tokenizeWords(combined);
 
+  let i = 0;
   for (const token of tokens) {
     // Take the first 9 chars.
     const length = Math.min(9, token.length);
@@ -59,36 +69,30 @@ export function extractTextTerms(inputs: Array<string>) {
       // This lets us squeeze another character into 64 bits.
       term |= BigInt(token.charCodeAt(i) & 0x7F) << BigInt(i * 7);
     }
-    terms.push(term);
+    terms.push([term, i]);
+    i += 1;
   }
 
   return terms;
 }
 
 export async function generateTextIndex(docsPath: string) {
-  const textIndex = new Map<bigint, Array<number>>();
+  const docOccurrences = new Map<number, Array<[bigint, number]>>();
 
   let count = 0;
   for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {
     if (tuneDoc.derivedText?.titles) {
       const textTerms = extractTextTerms(tuneDoc.derivedText?.titles);
-      for (const term of textTerms) {
-        const forTerm = textIndex.get(term);
-        if (forTerm) {
-          forTerm.push(tuneDoc.id);
-        } else {
-          textIndex.set(term, [tuneDoc.id]);
-        }
-      }
+      docOccurrences.set(tuneDoc.id, textTerms);
     }
 
     count += 1;
     if (count % 1000 == 0) {
-      console.log("Done", count, "...");
+      console.log("Generated text index from", count, "docs ...");
     }
   }
 
   console.log("Read total", count, "docs.");
 
-  return new TermDocIndex("titleText", textIndex);
+  return new DocTermOccurences("titleText", docOccurrences);
 }

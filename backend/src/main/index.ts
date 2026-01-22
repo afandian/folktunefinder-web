@@ -1,12 +1,13 @@
 import { getDocsPath } from "../fileTuneDocDb.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { generateTextIndex } from "../textIndex.ts";
-import { write } from "../indexWriter.ts";
+import { extractTextTerms, generateTextIndex } from "../textAnalysis.ts";
+import { generateTermDocIndex, PagedIndexWriter } from "../index.ts";
 import {
-  generateMelodyIncipitIndex,
+  generateMelodyIncipitDocTermOccurrences,
   generateMelodyIndex,
 } from "./musicIndex.ts";
-
+import v8 from "node:v8";
+import { PagedIndexWriterFileDriver } from "../diskStorageDriver.ts";
 function getConfig() {
   const args = parseArgs(Deno.args);
   if (!args.dbPath) {
@@ -24,29 +25,62 @@ async function run() {
 
   console.log("Load and generate melody incipit index...");
 
-  const melodyIncipitIndex = await generateMelodyIncipitIndex(docsPath);
+  const driver = new PagedIndexWriterFileDriver(config.dbPath);
 
-  console.log("Output melody incipit pages...");
+  if (true) {
+    const demoIndex = new Map<bigint, Array<[number, number]>>();
+    for (let t = 0n; t < 2000n; t += 1n) {
+      const o: Array<[number, number]> = [];
+      for (let d = 0; d < t; d += 1) {
+        o.push([Number(d), 1]);
+      }
+      demoIndex.set(BigInt(t), o);
+    }
+    const demoWriter = new PagedIndexWriter(32768, driver, "demo");
+    await demoWriter.write(demoIndex);
+  }
 
-  await write(config.dbPath, melodyIncipitIndex);
+  if (true) {
+    console.log("Load and generate text index...");
+    const textDocTermOccurrences = await generateTextIndex(docsPath);
+    console.log("Generate inverted index...");
+    const textIndex = generateTermDocIndex(
+      textDocTermOccurrences,
+    );
+    console.log("DANCE", textIndex.get(27321413860n));
+    console.log("Output textIndex pages...");
+    const textWriter = new PagedIndexWriter(32768, driver, "title");
+    await textWriter.write(textIndex);
+  }
 
-  console.log("Load and generate melody index...");
+  if (true) {
+    console.log("Load and generate melody incipit index...");
+    const melodyIncipitDocTermOccurrences =
+      await generateMelodyIncipitDocTermOccurrences(docsPath);
+    const melodyIncipitIndex = generateTermDocIndex(
+      melodyIncipitDocTermOccurrences,
+    );
+    console.log("Output melodyIndex pages...");
+    const melodyIncipitWriter = new PagedIndexWriter(
+      32768,
+      driver,
+      "melodyIncipit",
+    );
+    await melodyIncipitWriter.write(melodyIncipitIndex);
+  }
 
-  const melodyIndex = await generateMelodyIndex(docsPath);
+  if (true) {
+    console.log("Load and generate melody index...");
+    const melodyDocTermOccurrences = await generateMelodyIndex(docsPath);
+    const melodyIndex = generateTermDocIndex(
+      melodyDocTermOccurrences,
+    );
 
-  console.log("Output melody index pages...");
-
-  await write(config.dbPath, melodyIndex);
-
-  console.log("Load and generate text index...");
-
-  const textIndex = await generateTextIndex(docsPath);
-
-  console.log("Output text index pages...");
-
-  write(config.dbPath, textIndex);
-
+    console.log("Output melodyIndex pages...");
+    const melodyWriter = new PagedIndexWriter(32768, driver, "melody");
+    await melodyWriter.write(melodyIndex);
+  }
   console.log("Done!");
 }
 
-run();
+await run();

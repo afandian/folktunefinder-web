@@ -1,24 +1,18 @@
 import { iterateDocCollection } from "../fileTuneDocDb.ts";
-import { TermDocIndex } from "../index.ts";
-import { extractMelodyTerms } from "../melodyIndex.ts";
+import { DocTermOccurences, DocTermOccurrences } from "../types.ts";
+import { extractMelodyTerms } from "../melodyAnalysis.ts";
 
 export async function generateMelodyIndex(docsPath: string) {
-  const textIndex = new Map<bigint, Array<number>>();
+  const docOccurrences = new Map<number, Array<[bigint, number]>>();
 
   let count = 0;
   for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {
     if (tuneDoc.derivedMusic?.melodyPitches) {
-      const terms = extractMelodyTerms(tuneDoc.derivedMusic?.melodyPitches);
-      for (const term of terms) {
-        const forTerm = textIndex.get(term);
-        if (forTerm) {
-          forTerm.push(tuneDoc.id);
-        } else {
-          textIndex.set(term, [tuneDoc.id]);
-        }
-      }
+      docOccurrences.set(
+        tuneDoc.id,
+        extractMelodyTerms(tuneDoc.derivedMusic?.melodyPitches),
+      );
     }
-
     count += 1;
     if (count % 10000 == 0) {
       console.log("Read", count, "...");
@@ -27,26 +21,26 @@ export async function generateMelodyIndex(docsPath: string) {
 
   console.log("Read total", count, "docs.");
 
-  return new TermDocIndex("melodyIndex", textIndex);
+  return new DocTermOccurences("melodyIndex", docOccurrences);
 }
 
-export async function generateMelodyIncipitIndex(docsPath: string) {
-  const textIndex = new Map<bigint, Array<number>>();
+export async function generateMelodyIncipitDocTermOccurrences(
+  docsPath: string,
+) {
+  const docOccurrences: DocTermOccurrences = new Map<
+    number,
+    Array<[bigint, number]>
+  >();
 
   let count = 0;
   for await (const [_, tuneDoc] of iterateDocCollection(docsPath)) {
     if (tuneDoc.derivedMusic?.melodyPitches) {
-      const pitches = tuneDoc.derivedMusic?.melodyPitches.slice(0, 12);
+      const incipitPitches = tuneDoc.derivedMusic?.melodyPitches.slice(0, 12);
 
-      const terms = extractMelodyTerms(pitches);
-      for (const term of terms) {
-        const forTerm = textIndex.get(term);
-        if (forTerm) {
-          forTerm.push(tuneDoc.id);
-        } else {
-          textIndex.set(term, [tuneDoc.id]);
-        }
-      }
+      docOccurrences.set(
+        tuneDoc.id,
+        extractMelodyTerms(incipitPitches),
+      );
     }
 
     count += 1;
@@ -57,5 +51,5 @@ export async function generateMelodyIncipitIndex(docsPath: string) {
 
   console.log("Read total", count, "docs.");
 
-  return new TermDocIndex("melodyIncipitIndex", textIndex);
+  return new DocTermOccurences("melodyIncipitIndex", docOccurrences);
 }
